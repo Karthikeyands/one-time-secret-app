@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OneTimeSecret — Share secrets safely</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">🔐</div>
+      <span class="logo-text">OneTimeSecret</span>
+    </div>
+
+    <h1>Share a secret</h1>
+    <p class="subtitle">Your message is encrypted and self-destructs the moment it's read. No traces, no history.</p>
+
+    <form id="secretForm">
+      <div class="field">
+        <label for="secret">Secret message</label>
+        <textarea id="secret" placeholder="Type your secret here — a password, API key, private note..." required></textarea>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="Optional" />
+        </div>
+        <div class="field">
+          <label for="expiry">Expires in (mins)</label>
+          <input type="number" id="expiry" placeholder="Never" min="1" />
+          <p class="hint">Blank = never expire</p>
+        </div>
+      </div>
+
+      <button type="submit" id="submitBtn">Create secret link</button>
+    </form>
+
+    <div class="result-box" id="resultBox">
+      <div class="result-label">Your one-time link is ready</div>
+      <div class="url-row">
+        <div class="url-text" id="secretUrl"></div>
+        <button class="copy-btn" onclick="copyUrl()">Copy</button>
+      </div>
+      <div class="warning">⚠️ Share this link only once — it permanently disappears after the first view.</div>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <p class="footer-note">End-to-end encrypted · Auto-deletes after viewing</p>
+  </div>
+
+  <script>
+    const form = document.getElementById('secretForm');
+    const resultBox = document.getElementById('resultBox');
+    const errorBox = document.getElementById('errorBox');
+    const secretUrlEl = document.getElementById('secretUrl');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resultBox.classList.remove('show');
+      errorBox.classList.remove('show');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Encrypting...';
+
+      const body = {
+        secret: document.getElementById('secret').value,
+        password: document.getElementById('password').value || null,
+        expire_after_minutes: document.getElementById('expiry').value
+          ? parseInt(document.getElementById('expiry').value)
+          : null,
+      };
+
+      try {
+        const res = await fetch('/secret', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Something went wrong');
+
+        secretUrlEl.textContent = data.url;
+        resultBox.classList.add('show');
+        form.reset();
+      } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.classList.add('show');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create secret link';
+      }
+    });
+
+    function copyUrl() {
+      navigator.clipboard.writeText(secretUrlEl.textContent).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.textContent = 'Copied';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    }
+  </script>
+</body>
+</html>
