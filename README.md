@@ -1,19 +1,17 @@
-
 # 🔐 One-Time Secret App
 
-A secure API for sharing secrets that can only be viewed **once**, built with **FastAPI**, **SQLAlchemy**, and **PostgreSQL**. Secrets are encrypted and stored securely, and they self-destruct after being retrieved.
+A secure API for sharing secrets that can only be viewed **once**, built with **FastAPI**, **SQLAlchemy**, and **PostgreSQL (Neon Cloud)**. Secrets are encrypted at rest and permanently deleted after being retrieved.
 
 ---
 
 ## 🚀 Features
 
-- 🔒 Store secrets securely with AES encryption
-- 🧨 Self-destruct secrets after one retrieval
-- 🔐 Optional password protection
-- 🕒 Optional expiration after set time
-- 📦 Dockerized for easy setup
-- 🛠️ pgAdmin interface for DB access
-- 📄 Swagger (OpenAPI) documentation
+- 🔒 AES encryption via Fernet — secrets are unreadable in the database
+- 🧨 Self-destruct after one retrieval — gone forever
+- 🔐 Optional password protection (bcrypt hashed)
+- 🕒 Optional expiration after set minutes
+- ☁️ Neon serverless PostgreSQL — no local DB setup needed
+- 📄 Auto-generated Swagger UI at `/docs`
 
 ---
 
@@ -26,45 +24,77 @@ git clone <repo-url>
 cd one-time-secret-app
 ```
 
-### 2. Configure Environment Variables
-
-Create and edit a `.env` file in the root directory:
-
-```env
-# App settings
-ENCRYPTION_KEY=your-32-byte-base64-key
-
-# PostgreSQL settings
-POSTGRES_USER=your_pg_user
-POSTGRES_PASSWORD=your_pg_password
-POSTGRES_DB=secrets
-
-# pgAdmin settings
-PGADMIN_DEFAULT_EMAIL=your_email@example.com
-PGADMIN_DEFAULT_PASSWORD=your_pgadmin_password
-```
-
-> 💡 Use a secure random 32-byte base64 key for `ENCRYPTION_KEY`.
-
----
-
-### 3. Start the Application
+### 2. Install Dependencies
 
 ```bash
-docker compose up --build
+pip install -r requirements.txt
 ```
 
-- The API will be available at 👉 `http://localhost:8000`
-- pgAdmin will be available at 👉 `http://localhost:5050`
+### 3. Configure Environment Variables
 
-Login to pgAdmin using:
-- **Email**: `your_email@example.com`
-- **Password**: `your_pgadmin_password`
+Create a `.env` file in the root directory:
 
-Once inside pgAdmin, you can register the server with:
-- **Host**: `db`
-- **Username**: `your_pg_user`
-- **Password**: `your_pg_password`
+```env
+ENCRYPTION_KEY=your-generated-key-here
+POS_SQL=your-neon-postgresql-url-here
+```
+
+#### Generate the ENCRYPTION_KEY
+
+Run this command to generate a valid key:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Copy the output and paste it as the value of `ENCRYPTION_KEY` in your `.env` file.
+
+#### Get the POS_SQL URL
+
+- Go to [neon.tech](https://neon.tech)
+- Create a project and database
+- Copy the connection string (looks like `postgresql://user:password@host/dbname?sslmode=require`)
+- Paste it as the value of `POS_SQL`
+
+### 4. Create the Database Table
+
+Run this SQL in your **Neon dashboard → SQL Editor**:
+
+```sql
+CREATE TABLE secrets (
+    id VARCHAR PRIMARY KEY,
+    encrypted_secret VARCHAR NOT NULL,
+    password_hash VARCHAR,
+    expire_after_minutes INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    viewed BOOLEAN DEFAULT FALSE
+);
+```
+
+Or use Alembic migrations:
+
+```bash
+alembic upgrade head
+```
+
+### 5. Run the App
+
+```bash
+uvicorn app.main:app --reload
+```
+
+You should see:
+
+```
+✅ PostgreSQL is available.
+INFO:     Uvicorn running on http://127.0.0.1:8000
+```
+
+### 6. Open Swagger UI
+
+Go to 👉 `http://localhost:8000/docs`
+
+Test your endpoints directly from the browser.
 
 ---
 
@@ -76,13 +106,13 @@ Once inside pgAdmin, you can register the server with:
 POST /secret
 ```
 
-**Request JSON:**
+**Request Body:**
 
 ```json
 {
   "secret": "my super secret message",
   "password": "optional-password",
-  "expire_after_minutes": 30
+  "expire_after_minutes": 10
 }
 ```
 
@@ -90,42 +120,36 @@ POST /secret
 
 ```json
 {
-  "id": "abc123",
-  "url": "http://localhost:8000/secret/abc123"
+  "url": "http://localhost:8000/secret/a3f9b2c1-4d5e-6f7a-8b9c-0d1e2f3a4b5c"
 }
 ```
 
 ---
 
-### 📥 Retrieve a Secret
+### 📥 Access a Secret
 
-To retrieve (and destroy) a one-time secret, send a **POST** request to `/secret/retrieve` with the secret `id` and optional `password`.
-
-#### ✅ Without Password
-
-```bash
-curl -X POST http://localhost:8000/secret/retrieve \
-     -H "Content-Type: application/json" \
-     -d '{"id": "abc123"}'
+```http
+POST /secret/access
 ```
 
-#### 🔐 With Password
+**Request Body:**
 
-```bash
-curl -X POST http://localhost:8000/secret/retrieve \
-     -H "Content-Type: application/json" \
-     -d '{"id": "abc123", "password": "mypassword"}'
+```json
+{
+  "secret_id": "a3f9b2c1-4d5e-6f7a-8b9c-0d1e2f3a4b5c",
+  "password": "optional-password"
+}
 ```
 
 **Response:**
 
 ```json
 {
-  "secret": "your original message"
+  "secret": "my super secret message"
 }
 ```
 
-> ⚠️ The secret is **permanently deleted** after this request.
+> ⚠️ The secret is **permanently deleted** after this request. Accessing it again returns 404.
 
 ---
 
@@ -133,45 +157,29 @@ curl -X POST http://localhost:8000/secret/retrieve \
 
 ```
 one-time-secret-app/
-├── alembic/                 # DB migrations
+├── alembic/            # DB migration scripts
 ├── app/
-│   ├── crypto.py            # Encryption utilities
-│   ├── db.py                # DB connection and session
-│   ├── main.py              # FastAPI entrypoint
-│   ├── models.py            # SQLAlchemy models
-│   ├── routes.py            # API endpoints
-│   └── schemas.py           # Pydantic models
-├── tests/                   # Pytest test suite
-├── docker-compose.yml
-├── Dockerfile
-├── .env
-└── requirements.txt
+│   ├── crypto.py       # Fernet encrypt/decrypt
+│   ├── db.py           # DB connection and session
+│   ├── main.py         # FastAPI entry point
+│   ├── models.py       # SQLAlchemy table definition
+│   └── routes.py       # API endpoints
+├── tests/              # Pytest test suite
+├── .env                # Environment variables (never commit this)
+├── alembic.ini
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
 ## 🧪 Running Tests
 
-Make sure your `.env` is set up and run:
-
 ```bash
 pytest
 ```
 
----
-
-## 📣 Contributions
-
-Contributions are welcome! To contribute:
-
-1. Fork the repository
-2. Create a new branch: `git checkout -b feature/your-feature-name`
-3. Make your changes
-4. Commit your changes: `git commit -m "Add feature"`
-5. Push to your fork: `git push origin feature/your-feature-name`
-6. Open a Pull Request
-
-> 🙌 Feel free to open issues for suggestions, bugs, or improvements!
+Tests run with `TESTING=1` so no DB connection is required.
 
 ---
 
