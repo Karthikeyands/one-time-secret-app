@@ -4,6 +4,8 @@ import time
 import psycopg2
 from psycopg2 import OperationalError
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from .db import engine, Base
 
 # -------------------------------------------------
@@ -32,6 +34,7 @@ if not IS_TEST:
 def create_app() -> FastAPI:
     from .routes import router
     app = FastAPI()
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
     app.include_router(router)
     return app
 
@@ -39,4 +42,8 @@ app = create_app()
 
 @app.get("/")
 def read_root():
-    return {"message": "API is running!"}
+    return FileResponse("app/static/index.html")
+
+@app.get("/secret/{secret_id}")
+def secret_page(secret_id: str):
+    return FileResponse("app/static/secret.html")
