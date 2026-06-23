@@ -11,10 +11,10 @@ from .db import engine, Base
 IS_TEST = os.getenv("TESTING") == "1"
 # -------------------------------------------------
 
-def wait_for_postgres(host: str, user: str, password: str, db: str):
+def wait_for_postgres(dsn: str):
     while True:
         try:
-            conn = psycopg2.connect(host=host, user=user, password=password, dbname=db)
+            conn = psycopg2.connect(dsn)
             conn.close()
             print("✅ PostgreSQL is available.")
             break
@@ -25,12 +25,7 @@ def wait_for_postgres(host: str, user: str, password: str, db: str):
 # -------------------------------------------------
 # ❷  Only run these lines when NOT testing
 if not IS_TEST:
-    wait_for_postgres(
-        host="db",
-        user=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
-        db=os.environ["POSTGRES_DB"],
-    )
+    wait_for_postgres(dsn=os.environ["POS_SQL"])
     Base.metadata.create_all(bind=engine)
 # -------------------------------------------------
 
